@@ -111,7 +111,10 @@ def build_app(db_url: str):
 
     conn = psycopg.connect(db_url, autocommit=True)
     checkpointer = PostgresSaver(conn)
-    checkpointer.setup()
+    try:
+        checkpointer.setup()
+    except Exception:
+        pass  # Tables already exist from a previous run
     return graph.compile(checkpointer=checkpointer)
 
 
