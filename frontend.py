@@ -6,7 +6,10 @@ from main import build_app
 
 @st.cache_resource
 def get_app():
-    db_url = st.secrets.get("DATABASE_URL") or os.getenv("DATABASE_URL", "")
+    try:
+        db_url = st.secrets["DATABASE_URL"]
+    except Exception:
+        db_url = os.getenv("DATABASE_URL", "")
     return build_app(db_url)
 
 app = get_app()
