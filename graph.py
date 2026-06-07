@@ -2,9 +2,9 @@ import os
 from typing import TypedDict, Annotated
 import operator
 
-import psycopg
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.postgres import PostgresSaver
+from psycopg_pool import ConnectionPool
 from langchain_core.messages import (
     AnyMessage,
     HumanMessage,
@@ -108,8 +108,8 @@ def build_app(db_url: str, groq_api_key: str = "", tavily_api_key: str = "", avi
     graph.add_edge("itinerary_agent", "final_agent")
     graph.add_edge("final_agent", END)
 
-    conn = psycopg.connect(db_url, autocommit=True)
-    checkpointer = PostgresSaver(conn)
+    pool = ConnectionPool(db_url, max_size=5, kwargs={"autocommit": True})
+    checkpointer = PostgresSaver(pool)
     try:
         checkpointer.setup()
     except Exception:
