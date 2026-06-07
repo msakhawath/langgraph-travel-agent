@@ -28,7 +28,14 @@ class TravelState(TypedDict):
     llm_calls: int
 
 
-def build_app(db_url: str):
+def build_app(db_url: str, groq_api_key: str = "", tavily_api_key: str = "", aviationstack_api_key: str = ""):
+    if groq_api_key:
+        os.environ["GROQ_API_KEY"] = groq_api_key
+    if tavily_api_key:
+        os.environ["TAVILY_API_KEY"] = tavily_api_key
+    if aviationstack_api_key:
+        os.environ["AVIATIONSTACK_API_KEY"] = aviationstack_api_key
+
     llm = ChatGroq(model="llama-3.3-70b-versatile")
 
     def flight_agent(state: TravelState):

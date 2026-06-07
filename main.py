@@ -381,16 +381,20 @@ AGENT_META = {
     "final_agent":     ("🧠", "Final Agent"),
 }
 
+def _secret(key: str) -> str:
+    try:
+        return st.secrets[key]
+    except Exception:
+        return os.getenv(key, "")
+
 @st.cache_resource
 def get_app():
-    # Inject Streamlit Cloud secrets into environment so all libraries pick them up
-    for key in ["GROQ_API_KEY", "TAVILY_API_KEY", "AVIATIONSTACK_API_KEY", "DATABASE_URL"]:
-        try:
-            os.environ[key] = st.secrets[key]
-        except Exception:
-            pass  # Not in secrets — already set via .env locally
-    db_url = os.getenv("DATABASE_URL", "")
-    return build_app(db_url)
+    return build_app(
+        db_url=_secret("DATABASE_URL"),
+        groq_api_key=_secret("GROQ_API_KEY"),
+        tavily_api_key=_secret("TAVILY_API_KEY"),
+        aviationstack_api_key=_secret("AVIATIONSTACK_API_KEY"),
+    )
 
 if generate:
     if not user_query.strip():
