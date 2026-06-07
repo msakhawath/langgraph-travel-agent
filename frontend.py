@@ -4,16 +4,6 @@ from datetime import datetime
 from langchain_core.messages import HumanMessage
 from main import build_app
 
-@st.cache_resource
-def get_app():
-    try:
-        db_url = st.secrets["DATABASE_URL"]
-    except Exception:
-        db_url = os.getenv("DATABASE_URL", "")
-    return build_app(db_url)
-
-app = get_app()
-
 st.set_page_config(
     page_title="AI Travel Booking System",
     page_icon="✈️",
@@ -391,10 +381,19 @@ AGENT_META = {
     "final_agent":     ("🧠", "Final Agent"),
 }
 
+@st.cache_resource
+def get_app():
+    try:
+        db_url = st.secrets["DATABASE_URL"]
+    except Exception:
+        db_url = os.getenv("DATABASE_URL", "")
+    return build_app(db_url)
+
 if generate:
     if not user_query.strip():
         st.warning("Please describe your trip first.")
     else:
+        app = get_app()
         config = {"configurable": {"thread_id": thread_id}}
         collected = {"flight_results": "", "hotel_results": "",
                      "itinerary": "", "final_response": "", "llm_calls": 0}
