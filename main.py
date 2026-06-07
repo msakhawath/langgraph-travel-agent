@@ -29,7 +29,15 @@ from tools.flight_tool import search_flights
 from dotenv import load_dotenv
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL")
+# Streamlit Cloud exposes secrets via st.secrets; fall back to env var for local dev
+def _get_secret(key: str) -> str:
+    try:
+        import streamlit as st
+        return st.secrets[key]
+    except Exception:
+        return os.getenv(key, "")
+
+DATABASE_URL = _get_secret("DATABASE_URL")
 
 # LLM
 llm = ChatGroq(
