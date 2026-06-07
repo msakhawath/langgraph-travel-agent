@@ -1,0 +1,25 @@
+# Environment
+.env
+*.env
+
+# Virtual environment
+langgraph_env3/
+venv/
+env/
+.venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Travel plans / user data
+travel_plans/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
