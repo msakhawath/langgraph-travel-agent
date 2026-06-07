@@ -15,15 +15,13 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-API_KEY = os.getenv("AVIATIONSTACK_API_KEY")
-
 
 def search_flights(query):
 
     url = "http://api.aviationstack.com/v1/flights"
 
     params = {
-        "access_key": API_KEY,
+        "access_key": os.getenv("AVIATIONSTACK_API_KEY"),
         "limit": 5
     }
 

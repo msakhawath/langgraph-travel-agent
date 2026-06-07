@@ -313,7 +313,7 @@ with st.sidebar:
         st.markdown(f"<div class='sidebar-chip'>{tech}</div>", unsafe_allow_html=True)
 
     st.markdown("<div class='sidebar-title'>Agent Pipeline</div>", unsafe_allow_html=True)
-    for step in ["① Flight Agent", "② Hotel Agent", "③ Itinerary Agent", "④ Final Agent"]:
+    for step in ["① Intent Router", "② Flight Agent", "③ Hotel Agent", "④ Itinerary Agent", "⑤ Final Agent"]:
         st.markdown(f"<div class='sidebar-chip'>{step}</div>", unsafe_allow_html=True)
 
 # ── Hero ──────────────────────────────────────────────────────────────────────
@@ -375,10 +375,12 @@ generate = st.button("🚀  Generate My Travel Plan", use_container_width=True)
 
 # ── Agent pipeline ────────────────────────────────────────────────────────────
 AGENT_META = {
-    "flight_agent":    ("✈️", "Flight Agent"),
-    "hotel_agent":     ("🏨", "Hotel Agent"),
-    "itinerary_agent": ("🗓️", "Itinerary Agent"),
-    "final_agent":     ("🧠", "Final Agent"),
+    "router_node":         ("🧭", "Intent Router"),
+    "conversational_agent":("💬", "Assistant"),
+    "flight_agent":        ("✈️", "Flight Agent"),
+    "hotel_agent":         ("🏨", "Hotel Agent"),
+    "itinerary_agent":     ("🗓️", "Itinerary Agent"),
+    "final_agent":         ("🧠", "Final Agent"),
 }
 
 def _secret(key: str) -> str:
@@ -387,7 +389,7 @@ def _secret(key: str) -> str:
     except Exception:
         return os.getenv(key, "")
 
-@st.cache_resource
+@st.cache_resource(ttl=1800)
 def get_app():
     return build_app(
         db_url=_secret("DATABASE_URL"),
@@ -400,53 +402,82 @@ if generate:
     if not user_query.strip():
         st.warning("Please describe your trip first.")
     else:
-        app = get_app()
+        try:
+            app = get_app()
+        except Exception as e:
+            get_app.clear()
+            st.error(f"Failed to connect to database. Please try again. ({e})")
+            st.stop()
+
         config = {"configurable": {"thread_id": thread_id}}
         collected = {"flight_results": "", "hotel_results": "",
-                     "itinerary": "", "final_response": "", "llm_calls": 0}
+                     "itinerary": "", "final_response": "", "llm_calls": 0,
+                     "is_travel": True}
 
         st.markdown("---")
         st.markdown("<div class='sec-head'><span>🤖 Agent Pipeline — Live</span></div>",
                     unsafe_allow_html=True)
 
-        for chunk in app.stream(
-            {
-                "messages": [HumanMessage(content=user_query)],
-                "user_query": user_query,
-                "flight_results": "",
-                "hotel_results": "",
-                "itinerary": "",
-                "llm_calls": 0,
-            },
-            config=config,
-            stream_mode="updates",
-        ):
-            for node_name, state_update in chunk.items():
-                icon, label = AGENT_META.get(node_name, ("🔧", node_name))
+        try:
+            for chunk in app.stream(
+                {
+                    "messages": [HumanMessage(content=user_query)],
+                    "user_query": user_query,
+                    "flight_results": "",
+                    "hotel_results": "",
+                    "itinerary": "",
+                    "llm_calls": 0,
+                    "is_travel_query": True,
+                },
+                config=config,
+                stream_mode="updates",
+            ):
+                for node_name, state_update in chunk.items():
+                    icon, label = AGENT_META.get(node_name, ("🔧", node_name))
 
-                with st.status(f"{icon}  {label}", state="complete", expanded=True):
-                    if node_name == "flight_agent":
-                        text = state_update.get("flight_results", "")
-                        collected["flight_results"] = text
-                        st.markdown(text or "_No flight data returned._")
+                    with st.status(f"{icon}  {label}", state="complete", expanded=True):
+                        if node_name == "router_node":
+                            is_travel = state_update.get("is_travel_query", True)
+                            collected["is_travel"] = is_travel
+                            st.markdown("Travel query ✅" if is_travel else "General question 💬")
 
-                    elif node_name == "hotel_agent":
-                        text = state_update.get("hotel_results", "")
-                        collected["hotel_results"] = text
-                        st.markdown(text or "_No hotel data returned._")
+                        elif node_name == "conversational_agent":
+                            msgs = state_update.get("messages", [])
+                            text = msgs[-1].content if msgs else ""
+                            collected["final_response"] = text
+                            st.markdown(text or "_No response._")
 
-                    elif node_name == "itinerary_agent":
-                        text = state_update.get("itinerary", "")
-                        collected["itinerary"] = text
-                        st.markdown(text or "_No itinerary generated._")
+                        elif node_name == "flight_agent":
+                            text = state_update.get("flight_results", "")
+                            collected["flight_results"] = text
+                            st.markdown(text or "_No flight data returned._")
 
-                    elif node_name == "final_agent":
-                        msgs = state_update.get("messages", [])
-                        text = msgs[-1].content if msgs else ""
-                        collected["final_response"] = text
-                        st.markdown(text or "_No final response._")
+                        elif node_name == "hotel_agent":
+                            text = state_update.get("hotel_results", "")
+                            collected["hotel_results"] = text
+                            st.markdown(text or "_No hotel data returned._")
 
-                    collected["llm_calls"] = state_update.get("llm_calls", collected["llm_calls"])
+                        elif node_name == "itinerary_agent":
+                            text = state_update.get("itinerary", "")
+                            collected["itinerary"] = text
+                            st.markdown(text or "_No itinerary generated._")
+
+                        elif node_name == "final_agent":
+                            msgs = state_update.get("messages", [])
+                            text = msgs[-1].content if msgs else ""
+                            collected["final_response"] = text
+                            st.markdown(text or "_No final response._")
+
+                        collected["llm_calls"] = state_update.get("llm_calls", collected["llm_calls"])
+
+        except Exception as e:
+            err = str(e).lower()
+            if "connection" in err or "closed" in err or "operational" in err:
+                get_app.clear()
+                st.error("Database connection lost. Please click Generate again to reconnect.")
+            else:
+                st.error(f"An error occurred: {e}")
+            st.stop()
 
         # Metrics
         st.markdown(f"""

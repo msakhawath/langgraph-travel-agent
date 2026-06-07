@@ -26,6 +26,7 @@ class TravelState(TypedDict):
     hotel_results: str
     itinerary: str
     llm_calls: int
+    is_travel_query: bool
 
 
 def build_app(db_url: str, groq_api_key: str = "", tavily_api_key: str = "", aviationstack_api_key: str = ""):
@@ -37,6 +38,43 @@ def build_app(db_url: str, groq_api_key: str = "", tavily_api_key: str = "", avi
         os.environ["AVIATIONSTACK_API_KEY"] = aviationstack_api_key
 
     llm = ChatGroq(model="llama-3.3-70b-versatile")
+
+    def router_node(state: TravelState):
+        """Classify whether the query is travel-related or general conversation."""
+        query = state["user_query"]
+        response = llm.invoke([
+            SystemMessage(content=(
+                "You are an intent classifier. Does the user's message relate to travel planning, "
+                "flights, hotels, destinations, trips, itineraries, or booking? "
+                "Reply with ONLY the word 'travel' or 'general'. Nothing else."
+            )),
+            HumanMessage(content=query),
+        ])
+        is_travel = "travel" in response.content.strip().lower()
+        return {
+            "is_travel_query": is_travel,
+            "llm_calls": state.get("llm_calls", 0) + 1,
+        }
+
+    def route_query(state: TravelState) -> str:
+        if state.get("is_travel_query", True):
+            return "flight_agent"
+        return "conversational_agent"
+
+    def conversational_agent(state: TravelState):
+        """Handle non-travel queries with a direct conversational response."""
+        response = llm.invoke([
+            SystemMessage(content=(
+                "You are a friendly AI travel assistant. The user has asked something that isn't "
+                "a travel planning request. Answer naturally and helpfully. If it seems like they "
+                "might want travel help, gently mention you can plan trips for them."
+            )),
+            HumanMessage(content=state["user_query"]),
+        ])
+        return {
+            "messages": [response],
+            "llm_calls": state.get("llm_calls", 0) + 1,
+        }
 
     def flight_agent(state: TravelState):
         query = state["user_query"]
@@ -98,17 +136,38 @@ def build_app(db_url: str, groq_api_key: str = "", tavily_api_key: str = "", avi
         }
 
     graph = StateGraph(TravelState)
+    graph.add_node("router_node", router_node)
+    graph.add_node("conversational_agent", conversational_agent)
     graph.add_node("flight_agent", flight_agent)
     graph.add_node("hotel_agent", hotel_agent)
     graph.add_node("itinerary_agent", itinerary_agent)
     graph.add_node("final_agent", final_agent)
-    graph.add_edge(START, "flight_agent")
+
+    graph.add_edge(START, "router_node")
+    graph.add_conditional_edges("router_node", route_query, {
+        "flight_agent": "flight_agent",
+        "conversational_agent": "conversational_agent",
+    })
+    graph.add_edge("conversational_agent", END)
     graph.add_edge("flight_agent", "hotel_agent")
     graph.add_edge("hotel_agent", "itinerary_agent")
     graph.add_edge("itinerary_agent", "final_agent")
     graph.add_edge("final_agent", END)
 
-    pool = ConnectionPool(db_url, max_size=5, kwargs={"autocommit": True})
+    # min_size=0: don't pre-create connections (avoids Neon cold-start failures)
+    # max_idle=120: recycle connections after 2 min idle (Neon kills after ~5 min)
+    # check=check_connection: validate each connection before use
+    # prepare_threshold=0: disable prepared statements for Neon's PgBouncer
+    pool = ConnectionPool(
+        db_url,
+        min_size=0,
+        max_size=5,
+        open=True,
+        kwargs={"autocommit": True, "prepare_threshold": 0},
+        check=ConnectionPool.check_connection,
+        max_idle=120.0,
+        max_lifetime=300.0,
+    )
     checkpointer = PostgresSaver(pool)
     try:
         checkpointer.setup()
@@ -131,6 +190,7 @@ if __name__ == "__main__":
             "hotel_results": "",
             "itinerary": "",
             "llm_calls": 0,
+            "is_travel_query": True,
         },
         config=config,
     )
