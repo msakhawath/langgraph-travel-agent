@@ -29,7 +29,10 @@ from tools.flight_tool import search_flights
 from dotenv import load_dotenv
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL")
+DATABASE_URL = os.getenv("DATABASE_URL", "")
+# Strip ?sslmode=... from URL for psycopg (it uses keyword arg instead)
+_db_url = DATABASE_URL.split("?")[0] if "?" in DATABASE_URL else DATABASE_URL
+_ssl = "require" if DATABASE_URL and "?" in DATABASE_URL and "sslmode=require" in DATABASE_URL else None
 
 # LLM
 llm = ChatGroq(
@@ -139,7 +142,7 @@ graph.add_edge("final_agent", END)
 
 
 # Persistent connection so both CLI and Streamlit can share the compiled app
-_conn = psycopg.connect(DATABASE_URL, autocommit=True)
+_conn = psycopg.connect(_db_url, autocommit=True, **( {"sslmode": _ssl} if _ssl else {} ))
 checkpointer = PostgresSaver(_conn)
 checkpointer.setup()
 
