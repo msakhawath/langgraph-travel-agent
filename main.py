@@ -146,15 +146,14 @@ graph.add_edge("itinerary_agent", "final_agent")
 graph.add_edge("final_agent", END)
 
 
-# Persistent connection so both CLI and Streamlit can share the compiled app
-_conn = psycopg.connect(DATABASE_URL, autocommit=True)
-checkpointer = PostgresSaver(_conn)
-checkpointer.setup()
-
-app = graph.compile(checkpointer=checkpointer)
-
+def build_app(db_url: str):
+    conn = psycopg.connect(db_url, autocommit=True)
+    checkpointer = PostgresSaver(conn)
+    checkpointer.setup()
+    return graph.compile(checkpointer=checkpointer)
 
 if __name__ == "__main__":
+    app = build_app(DATABASE_URL)
     config = {
         "configurable": {
             "thread_id": "user_sakhawat "

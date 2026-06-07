@@ -2,7 +2,14 @@ import os
 import streamlit as st
 from datetime import datetime
 from langchain_core.messages import HumanMessage
-from main import app
+from main import build_app
+
+@st.cache_resource
+def get_app():
+    db_url = st.secrets.get("DATABASE_URL") or os.getenv("DATABASE_URL", "")
+    return build_app(db_url)
+
+app = get_app()
 
 st.set_page_config(
     page_title="AI Travel Booking System",
